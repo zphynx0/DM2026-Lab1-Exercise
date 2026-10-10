@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
+from sklearn.preprocessing import OneHotEncoder
 import umap
 from langchain_core.tools import tool
 
@@ -145,4 +146,79 @@ def make_tools(session):
 
         return summary
 
-    return [reduce_dimensions_tool]
+    @tool
+    def binarize_labels_tool(
+        column_name: str = "category_name",
+    ) -> Dict[str, Any]:
+        """One-hot encodes a categorical label column in session.dataframe into a binary matrix.
+
+        Uses sklearn OneHotEncoder to ensure consistent multi-column 0/1 indicator matrices
+        (avoiding 1D binary vectors for 2-class problems). Stores the binarized matrix
+        and fitted encoder in session.artifacts.
+
+        Args:
+            column_name: Column name in session.dataframe to binarize (default: "category_name").
+
+        Returns:
+            Dict containing result_id, classes, shape [n_samples, n_classes], or an error dict if validation fails.
+        """
+        if session.dataframe is None:
+            return {
+                "status": "error",
+                "message": "No dataset in session. Load data first.",
+            }
+
+        if column_name not in session.dataframe.columns:
+            available_cols = list(session.dataframe.columns)
+            return {
+                "status": "error",
+                "message": f"Column '{column_name}' not found in dataframe. Available columns: {available_cols}",
+            }
+
+        series = session.dataframe[column_name]
+
+        if series.isna().any():
+            n_missing = int(series.isna().sum())
+            return {
+                "status": "error",
+                "message": f"Column '{column_name}' contains {n_missing} missing (NaN) values. Clean missing values first.",
+            }
+
+        labels_arr = series.to_numpy().reshape(-1, 1)
+
+        encoder = OneHotEncoder(sparse_output=False, dtype=int)
+        binarized_matrix = encoder.fit_transform(labels_arr)
+
+        raw_categories = encoder.categories_[0]
+        classes = [str(cat) for cat in raw_categories]
+
+        df_binarized = pd.DataFrame(
+            binarized_matrix,
+            columns=classes,
+            index=session.dataframe.index,
+        )
+
+        # Store matrix and fitted encoder in session.artifacts
+        session.artifacts["binarized_labels"] = binarized_matrix
+        session.artifacts["binarized_labels_df"] = df_binarized
+        session.artifacts["binarized_labels_encoder"] = encoder
+
+        result_id = session.next_result_id("binarize_labels")
+        shape = [int(dim) for dim in binarized_matrix.shape]
+
+        summary = {
+            "result_id": result_id,
+            "classes": classes,
+            "shape": shape,
+        }
+
+        session.store_result(
+            "binarize_labels_tool",
+            {"column_name": column_name},
+            summary,
+            full_report=df_binarized,
+        )
+
+        return summary
+
+    return [reduce_dimensions_tool, binarize_labels_tool]

@@ -149,3 +149,49 @@ def test_reduce_dimensions_umap_known_answer_9():
 
     assert session.pending_figure is not None
     assert isinstance(session.pending_figure, matplotlib.figure.Figure)
+
+
+def test_binarize_labels_tool():
+    session = SessionState()
+
+    premade_tools, _ = load_workspace_tools("premade_tools", session)
+    load_dataset_tool = next(t for t in premade_tools if t.name == "load_dataset_tool")
+    load_dataset_tool.invoke({
+        "file_path": "agent_dev/sample_fixture.csv",
+        "text_column": "text",
+        "label_column": "label"
+    })
+
+    reduction_tools = make_reduction_tools(session)
+    binarize_tool = next(t for t in reduction_tools if t.name == "binarize_labels_tool")
+
+    # Test error handling when column does not exist
+    err_res = binarize_tool.invoke({"column_name": "non_existent_column"})
+    assert err_res.get("status") == "error"
+    assert "non_existent_column" in err_res.get("message", "")
+
+    # Invoke tool on category_name
+    res = binarize_tool.invoke({"column_name": "category_name"})
+
+    assert res["shape"] == [8, 2]
+    assert sorted(res["classes"]) == ["catA", "catB"]
+
+    # Check stored artifacts
+    assert "binarized_labels" in session.artifacts
+    matrix = session.artifacts["binarized_labels"]
+    assert matrix.shape == (8, 2)
+
+    catA_idx = res["classes"].index("catA")
+    catB_idx = res["classes"].index("catB")
+
+    # Rows 0, 1, 2, 7 belong to catA; Rows 3, 4, 5, 6 belong to catB
+    catA_rows = [0, 1, 2, 7]
+    catB_rows = [3, 4, 5, 6]
+
+    for row_idx in catA_rows:
+        assert matrix[row_idx, catA_idx] == 1
+        assert matrix[row_idx, catB_idx] == 0
+
+    for row_idx in catB_rows:
+        assert matrix[row_idx, catA_idx] == 0
+        assert matrix[row_idx, catB_idx] == 1
