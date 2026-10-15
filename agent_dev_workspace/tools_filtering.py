@@ -19,7 +19,7 @@ def make_tools(session):
             threshold: Minimum variance threshold required to keep a term (default: 0.15).
 
         Returns:
-            Dict containing result_id, threshold, n_kept, n_removed, kept_terms, removed_terms, and variances.
+            Dict containing result_id, threshold, n_kept, n_removed, top_20_kept_by_variance, and top_20_removed_by_variance.
         """
         if session.feature_matrix is None or session.feature_names is None:
             return {"status": "error", "message": "No document-term matrix in session. Run build_dtm_tool first."}
@@ -40,16 +40,22 @@ def make_tools(session):
         df_report = pd.DataFrame(sorted_items, columns=["term", "variance"])
 
         result_id = session.next_result_id("variance_filter")
+        
+        # Keep stored summary and returned dict small
+        top_20_kept = [(t, round(v, 6)) for t, v in sorted_items if v >= threshold][:20]
+        sorted_removed = sorted([(t, var_dict[t]) for t in removed_terms], key=lambda item: item[1])
+        top_20_removed = [(t, round(v, 6)) for t, v in sorted_removed][:20]
+
         summary = {
             "result_id": result_id,
             "threshold": threshold,
             "n_kept": len(kept_terms),
             "n_removed": len(removed_terms),
-            "kept_terms": kept_terms,
-            "removed_terms": removed_terms,
-            "variances": {k: round(v, 6) for k, v in var_dict.items()},
+            "top_20_kept_by_variance": top_20_kept,
+            "top_20_removed_by_variance": top_20_removed,
         }
 
+        # Full per-term table stored in full_report
         session.store_result("variance_filter_tool", {"threshold": threshold}, summary, full_report=df_report)
 
         return summary
@@ -69,7 +75,7 @@ def make_tools(session):
             threshold: Minimum absolute correlation required to keep a term (default: 0.2).
 
         Returns:
-            Dict containing result_id, target_class, threshold, n_kept, n_removed, kept_terms, removed_terms, and correlations.
+            Dict containing result_id, target_class, threshold, n_kept, n_removed, top_20_kept_by_abs_r, and top_20_removed_by_abs_r.
         """
         if session.feature_matrix is None or session.feature_names is None or session.labels is None:
             return {"status": "error", "message": "No document-term matrix or labels in session. Run build_dtm_tool first."}
@@ -98,17 +104,27 @@ def make_tools(session):
         df_report = pd.DataFrame(sorted_items, columns=["term", "pearson_r"])
 
         result_id = session.next_result_id("pearson_filter")
+
+        top_20_kept = sorted(
+            ((t, round(r, 6)) for t, r in corr_dict.items() if abs(r) >= threshold),
+            key=lambda x: abs(x[1]), reverse=True,
+        )[:20]
+        top_20_removed = sorted(
+            ((t, round(r, 6)) for t, r in corr_dict.items() if abs(r) < threshold),
+            key=lambda x: abs(x[1]),
+        )[:20]
+
         summary = {
             "result_id": result_id,
             "target_class": target_class,
             "threshold": threshold,
             "n_kept": len(kept_terms),
             "n_removed": len(removed_terms),
-            "kept_terms": kept_terms,
-            "removed_terms": removed_terms,
-            "correlations": {k: round(v, 6) for k, v in corr_dict.items()},
+            "top_20_kept_by_abs_r": top_20_kept,
+            "top_20_removed_by_abs_r": top_20_removed,
         }
 
+        # Full per-term table stored in full_report
         session.store_result(
             "pearson_filter_tool",
             {"target_class": target_class, "threshold": threshold},
@@ -133,7 +149,7 @@ def make_tools(session):
             threshold: Minimum absolute correlation required to keep a term (default: 0.2).
 
         Returns:
-            Dict containing result_id, target_class, threshold, n_kept, n_removed, kept_terms, removed_terms, and correlations.
+            Dict containing result_id, target_class, threshold, n_kept, n_removed, top_20_kept_by_abs_r, and top_20_removed_by_abs_r.
         """
         if session.feature_matrix is None or session.feature_names is None or session.labels is None:
             return {"status": "error", "message": "No document-term matrix or labels in session. Run build_dtm_tool first."}
@@ -161,17 +177,27 @@ def make_tools(session):
         df_report = pd.DataFrame(sorted_items, columns=["term", "spearman_r"])
 
         result_id = session.next_result_id("spearman_filter")
+
+        top_20_kept = sorted(
+            ((t, round(r, 6)) for t, r in corr_dict.items() if abs(r) >= threshold),
+            key=lambda x: abs(x[1]), reverse=True,
+        )[:20]
+        top_20_removed = sorted(
+            ((t, round(r, 6)) for t, r in corr_dict.items() if abs(r) < threshold),
+            key=lambda x: abs(x[1]),
+        )[:20]
+
         summary = {
             "result_id": result_id,
             "target_class": target_class,
             "threshold": threshold,
             "n_kept": len(kept_terms),
             "n_removed": len(removed_terms),
-            "kept_terms": kept_terms,
-            "removed_terms": removed_terms,
-            "correlations": {k: round(v, 6) for k, v in corr_dict.items()},
+            "top_20_kept_by_abs_r": top_20_kept,
+            "top_20_removed_by_abs_r": top_20_removed,
         }
 
+        # Full per-term table stored in full_report
         session.store_result(
             "spearman_filter_tool",
             {"target_class": target_class, "threshold": threshold},

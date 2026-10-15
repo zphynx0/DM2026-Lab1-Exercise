@@ -59,6 +59,9 @@ def make_tools(session):
             session.store_result("mine_patterns_tool", {"category_name": category_name}, summary)
             return summary
 
+        # Standardize text to ASCII / UTF-8 safe characters before vectorizing to avoid decoding errors in downstream PAMI steps
+        text_series = text_series.str.encode("ascii", errors="ignore").str.decode("utf-8")
+
         # 2. Fresh per-category CountVectorizer with English stopwords
         vec = CountVectorizer(stop_words="english")
         dtm_cat = vec.fit_transform(text_series)

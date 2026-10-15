@@ -6,6 +6,8 @@ import seaborn as sns
 from langchain_core.tools import tool
 from sklearn.feature_extraction.text import CountVectorizer
 
+MAX_TOP_TERMS = 50
+
 
 def make_tools(session):
     @tool
@@ -78,48 +80,54 @@ def make_tools(session):
 
     @tool
     def term_frequency_tool(
-        top_n: Optional[int] = None
+        top_n: Optional[int] = 20
     ) -> Dict[str, Any]:
         """Aggregates term frequencies across all documents in the Document-Term Matrix.
-
+ 
         Sums columns of session.feature_matrix across all documents to compute total frequency per term.
-
+        Only the top_n most frequent terms are returned (capped at 50 to keep the response small);
+        the full ranked table is stored for visualize_result_tool.
+ 
         Args:
-            top_n: Optional limit on the number of top-frequent terms to return.
-
+            top_n: Number of top-frequent terms to include in the returned summary dict (default: 20, max: 50).
+ 
         Returns:
-            Dict containing total_terms, term_frequencies (term -> total_count), and top_terms.
+            Dict containing result_id, total_terms, and top_terms mapping terms to their frequency counts.
         """
         if session.feature_matrix is None or session.feature_names is None:
             return {"status": "error", "message": "No document-term matrix in session. Run build_dtm_tool first."}
-
+ 
+        # Resolve and clamp top_n so the returned dict is always small
+        limit = 20 if top_n is None else int(top_n)
+        if limit < 1:
+            return {"status": "error", "message": "top_n must be at least 1."}
+        clamped = limit > MAX_TOP_TERMS
+        limit = min(limit, MAX_TOP_TERMS)
+ 
         # Sum occurrences across all documents for each term column
-        counts = np.asarray(session.feature_matrix.sum(axis=0)).flatten().tolist()
+        counts = np.asarray(session.feature_matrix.sum(axis=0)).flatten()
         terms = session.feature_names
-
-        # Create dictionary mapping term -> total count
-        tf_dict = {term: int(count) for term, count in zip(terms, counts)}
-
-        # Sort descending by frequency
-        sorted_tf = dict(sorted(tf_dict.items(), key=lambda item: item[1], reverse=True))
-
-        if top_n is not None:
-            items = list(sorted_tf.items())[:top_n]
-            reported_tf = dict(items)
-        else:
-            reported_tf = sorted_tf
-
-        # Format full report DataFrame for visualize_result_tool compatibility
-        df_report = pd.DataFrame(list(sorted_tf.items()), columns=["term", "frequency"])
-
+ 
+        # Stable descending sort (ties keep vocabulary order)
+        order = np.argsort(-counts, kind="stable")
+ 
+        reported_tf = {terms[i]: int(counts[i]) for i in order[:limit]}
+ 
+        # Full ranked report for visualize_result_tool (first col: term, second col: count); never sent to the LLM
+        df_report = pd.DataFrame({
+            "term": [terms[i] for i in order],
+            "frequency": counts[order].astype(int),
+        })
+ 
         result_id = session.next_result_id("tf")
         summary = {
             "result_id": result_id,
             "total_terms": len(terms),
-            "term_frequencies": tf_dict,
             "top_terms": reported_tf
         }
-
+        if clamped:
+            summary["note"] = f"top_n was capped at {MAX_TOP_TERMS} to keep the response small."
+ 
         session.store_result("term_frequency_tool", {"top_n": top_n}, summary, full_report=df_report)
 
         return summary
