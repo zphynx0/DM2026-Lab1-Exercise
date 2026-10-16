@@ -32,6 +32,7 @@ __pycache__/
 temp_scripts/
 
 # Agentic pipeline: secrets
+config/.env.example
 config/.env
 # Grading keys -- only the public half is committed; every student's
 # notebook needs it to encrypt their session log.
@@ -56,3 +57,4 @@ reports/*.md
 # automatically when this folder is opened as a project through
 # Anaconda's UI, machine-specific, never meant to be committed.
 anaconda_projects/
+config/.env
